@@ -20,30 +20,30 @@ def parse_args():
         sub.add_argument("-r","--running",help="Gets only running containers",action="store_true")
     return parser.parse_args()
 
-def start(compose_file):
-    process = subprocess.run(["docker","compose","-f",compose_file,"up","-d"])
-    return process.returncode
+def do_docker_subcommand(mode,compose_file):
+    if mode == "start":
+        process = subprocess.run(["docker","compose","-f",compose_file,"up","-d"])
+        return process.returncode 
+    elif mode == "stop":
+        process = subprocess.run(["docker","compose","-f",compose_file,"stop"])
+        return process.returncode
+    elif mode == "restart":
+        process = subprocess.run(["docker","compose","-f",compose_file,"restart"])
+        return process.returncode
+    elif mode == "rebuild":
+        process = subprocess.run(["docker","compose","-f",compose_file,"up","-d","--build"])
+        return process.returncode
+    else:
+        return
 
-def stop(compose_file):
-    process = subprocess.run(["docker","compose","-f",compose_file,"stop"])
-    return process.returncode
-
-def restart(compose_file):
-    process = subprocess.run(["docker","compose","-f",compose_file,"restart"])
-    return process.returncode
-
-def rebuild(compose_file):
-    process = subprocess.run(["docker","compose","-f",compose_file,"up","-d","--build"])
-    return process.returncode
-
-def do_start(args,containers,webhook_url):
+def do_docker(mode,containers,server,sleep_time,webhook_url):
     servers = containers
-    if args.server:
-        if args.server not in containers:
+    if server:
+        if server not in containers:
             exit(1)
         else:
-            servers = {args.server: containers[args.server]}
-    message = "Start command sent to "
+            servers = {server: containers[server]}
+    message = "Sending " + mode + " command to "
     length = len(servers)
     for index, (game, server) in enumerate(servers.items()):
         if length == 1:
@@ -53,125 +53,38 @@ def do_start(args,containers,webhook_url):
             message += "and " + game
         else:
             message += game + " "
-    message += " in " + str(args.time) + " minutes"
+    if sleep_time == 0:
+        message += " in 1 second"
+        sleep_time = 1
+    else:
+        if sleep_time == 1:
+            message += " in 1 minute"
+        else:
+            message += " in " + sleep_time + " minutes"
+        sleep_time *= 60
     send_discord(webhook_url,message)
-    time.sleep(args.time * 60)
+    time.sleep(sleep_time)
     for game, server in servers.items():
-        if server["status"] == "running":
-            message = game + " already running"
+        message = ""
+        if mode == "start":
+            if server["status"] == "running":
+                message += game + " already running"
+                send_discord(webhook_url,message)
+                break
+        elif mode in ["stop","restart","rebuild"]:
+            if server["status"] == "exited":
+                if mode == "stop":
+                    message += game + " already stopped"
+                    send_discord(webhook_url,message)
+                    break
+                else:
+                    message += game + " stopped, starting server"
+                    send_discord(webhook_url,message)
+        status = do_docker_subcommand(mode,server["compose_file"])
+        if status == 0:
+            message = "Successful " + mode + " on " + game + " 🚀"
         else:
-            status = start(server["compose_file"])
-            if status == 0:
-                message = "Successfully started " + game + "🚀"
-            else:
-                message = "Failed to start " + game 
-        send_discord(webhook_url,message)
-    return
-
-def do_stop(args,containers,webhook_url):
-    servers = containers
-    if args.server:
-        if args.server not in containers:
-            exit(1)
-        else:
-            servers = {args.server: containers[args.server]}
-    message = "Stop command sent to "
-    length = len(servers)
-    for index, (game, server) in enumerate(servers.items()):
-        if length == 1:
-            message += game
-            break
-        if index == length - 1:
-            message += "and " + game
-        else:
-            message += game + " "
-    message += " in " + str(args.time) + " minutes"
-    send_discord(webhook_url,message)
-    time.sleep(args.time * 60)
-    for game, server in servers.items():
-        if server["status"] == "exited":
-            message = game + " already stopped"
-        else:
-            status = stop(server["compose_file"])
-            if status == 0:
-                message = "Successfully stopped " + game
-            else:
-                message = "Failed to stop " + game 
-        send_discord(webhook_url,message)
-    return
-
-def do_restart(args,containers,webhook_url):
-    servers = containers
-    if args.server:
-        if args.server not in containers:
-            exit(1)
-        else:
-            servers = {args.server: containers[args.server]}
-    message = "Restart command sent to "
-    length = len(servers)
-    for index, (game, server) in enumerate(servers.items()):
-        if length == 1:
-            message += game
-            break
-        if index == length - 1:
-            message += "and " + game
-        else:
-            message += game + " "
-    message += " in " + str(args.time) + " minutes"
-    send_discord(webhook_url,message)
-    time.sleep(args.time * 60)
-    for game, server in servers.items():
-        if server["status"] == "exited":
-            message = game + " stopped, starting server"
-            status = start(server["compose_file"])
-            if status == 0:
-                message = "Successfully restarted " + game
-            else:
-                message = "Failed to restart " + game 
-        else:
-            status = restart(server["compose_file"])
-            if status == 0:
-                message = "Successfully restarted " + game
-            else:
-                message = "Failed to restart " + game 
-        send_discord(webhook_url,message)
-    return
-
-def do_rebuild(args,containers,webhook_url):
-    servers = containers
-    if args.server:
-        if args.server not in containers:
-            exit(1)
-        else:
-            servers = {args.server: containers[args.server]}
-    message = "Rebuild command sent to "
-    length = len(servers)
-    for index, (game, server) in enumerate(servers.items()):
-        if length == 1:
-            message += game
-            break
-        if index == length - 1:
-            message += "and " + game
-        else:
-            message += game + " "
-    message += " in " + str(args.time) + " minutes"
-    send_discord(webhook_url,message)
-    time.sleep(args.time * 60)
-    for game, server in servers.items():
-        if server["status"] == "exited":
-            message = game + " stopped, starting server"
-            send_discord(webhook_url,message)
-            status = rebuild(server["compose_file"])
-            if status == 0:
-                message = "Successfully built and started " + game
-            else:
-                message = "Failed to rebuild or start " + game 
-        else:
-            status = rebuild(server["compose_file"])
-            if status == 0:
-                message = "Successfully rebuilt " + game
-            else:
-                message = "Failed to rebuild " + game 
+            message = "Failed to " + mode + " " + game 
         send_discord(webhook_url,message)
     return
 
@@ -216,14 +129,8 @@ def main():
     load_dotenv()
     containers = get_containers(args)
     webhook_url = os.getenv("discord_webhook_url")
-    if args.mode == "start":
-        do_start(args,containers,webhook_url)
-    elif args.mode == "stop":
-        do_stop(args,containers,webhook_url)
-    elif args.mode == "rebuild":
-        do_rebuild(args,containers,webhook_url)
-    elif args.mode == "restart":
-        do_restart(args,containers,webhook_url)
+    if args.mode in ["start","stop","rebuild","restart"]:
+        do_docker(args.mode,containers,args.server,args.time,webhook_url)
     else:
         sys.exit(1)
 
