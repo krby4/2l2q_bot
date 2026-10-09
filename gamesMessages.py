@@ -6,6 +6,7 @@ import argparse
 import time
 import os
 from dotenv import load_dotenv
+import docker_commands
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Start,Stop,Rebuild. Defaults to all")
@@ -19,22 +20,6 @@ def parse_args():
         sub.add_argument("-t","--time",help="Time in minutes",type=int,default=10)
         sub.add_argument("-r","--running",help="Gets only running containers",action="store_true")
     return parser.parse_args()
-
-def do_docker_subcommand(mode,compose_file):
-    if mode == "start":
-        process = subprocess.run(["docker","compose","-f",compose_file,"up","-d"])
-        return process.returncode 
-    elif mode == "stop":
-        process = subprocess.run(["docker","compose","-f",compose_file,"stop"])
-        return process.returncode
-    elif mode == "restart":
-        process = subprocess.run(["docker","compose","-f",compose_file,"restart"])
-        return process.returncode
-    elif mode == "rebuild":
-        process = subprocess.run(["docker","compose","-f",compose_file,"up","-d","--build"])
-        return process.returncode
-    else:
-        return
 
 def do_docker(mode,containers,server,sleep_time,webhook_url):
     servers = containers
@@ -80,7 +65,7 @@ def do_docker(mode,containers,server,sleep_time,webhook_url):
                 else:
                     message += game + " stopped, starting server"
                     send_discord(webhook_url,message)
-        status = do_docker_subcommand(mode,server["compose_file"])
+        status = docker_commands.run_compose_command(mode,server["compose_file"])
         if status == 0:
             message = "Successful " + mode + " on " + game + " 🚀"
         else:
@@ -99,35 +84,11 @@ def send_discord(webhook,message):
     else:
         return False
 
-def get_containers(args):
-    if args.running and args.mode != "start":
-        output = subprocess.run(
-            [
-            "docker","ps","--filter","label=type=game",
-            "--format",'{{.Label "game"}}|{{.Names}}|{{.Label "com.docker.compose.project.config_files"}}|{{.State}}',
-            ], capture_output=True,text=True
-        ).stdout.splitlines()
-    else:
-        output = subprocess.run(
-            [
-            "docker","ps","-a","--filter","label=type=game",
-            "--format",'{{.Label "game"}}|{{.Names}}|{{.Label "com.docker.compose.project.config_files"}}|{{.State}}',
-            ], capture_output=True,text=True
-        ).stdout.splitlines()
-    servers = {}
-    for line in output:
-        game, container_name, compose_file, status = line.split("|")
-        servers[game] = {
-            "container_name": container_name,
-            "compose_file": compose_file,
-            "status": status
-        }
-    return servers
 
 def main():
     args = parse_args()
     load_dotenv()
-    containers = get_containers(args)
+    containers = docker_commands.get_containers(args.running)
     webhook_url = os.getenv("discord_webhook_url")
     if args.mode in ["start","stop","rebuild","restart"]:
         do_docker(args.mode,containers,args.server,args.time,webhook_url)
