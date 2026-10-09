@@ -1,0 +1,16 @@
+[Unit]
+Description=Starts a discord bot in a specific spot
+After=network.target
+
+[Service]
+Type=exec
+User=USER
+Group=GROUP_OPTIONAL
+WorkingDirectory=/srv/myServices/gameDiscordBot
+ExecStart=/srv/myServices/gameDiscordBot/.venv/bin/python /srv/myServices/gameDiscordBot/myServices/gameDiscordBot/2l2qbot.py
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
